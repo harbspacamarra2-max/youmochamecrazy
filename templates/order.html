@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order | You Mocha Me Crazy</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="order-page">
+
+  <!-- LEFT SIDE: the menu -->
+  <main class="menu-side">
+
+    <!-- Top bar: shop name, cashier name, Sales and Logout links -->
+    <header class="top">
+      <div class="brand">{% include 'cup.svg' %}<span>You Mocha Me Crazy</span></div>
+      <div class="user">
+        {{ username }} &middot;
+        <a href="/sales">Sales</a> &middot;
+        <a href="/logout">Logout</a>
+      </div>
+    </header>
+
+    <!-- Category tabs: Coffee, Non Coffee, Pastry -->
+    <nav class="tabs">
+      {% for category in categories %}
+        <button class="tab" data-category="{{ category }}">{{ category }}</button>
+      {% endfor %}
+    </nav>
+
+    <!-- One card for every product -->
+    <section class="grid">
+      {% for product in products %}
+        <button class="item"
+                data-id="{{ product.product_id }}"
+                data-name="{{ product.name }}"
+                data-price="{{ product.price }}"
+                data-category="{{ product.category }}">
+          <span class="item-img" style="background: {{ product.color }}">{% include 'cup.svg' %}</span>
+          <span class="item-name">{{ product.name }}</span>
+          <span class="item-price">PHP {{ '{:,.0f}'.format(product.price) }}</span>
+        </button>
+      {% endfor %}
+    </section>
+
+    <p class="hint">Tap an item to add it to the order</p>
+  </main>
+
+  <!-- RIGHT SIDE: the current order -->
+  <aside class="order-side">
+    <div class="order-head">
+      <h2>Order</h2>
+      <button id="clearButton" class="link-btn">Clear</button>
+    </div>
+
+    <!-- The items in the order are added here by app.js -->
+    <div id="orderList" class="order-list"></div>
+    <p id="emptyMessage" class="empty">No items yet</p>
+
+    <div class="total-row">
+      <span>Total</span>
+      <strong id="total">PHP 0</strong>
+    </div>
+    <button id="payButton" class="btn-pay" disabled>Pay</button>
+  </aside>
+
+  <!-- Small message box that pops up after paying -->
+  <div id="message" class="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
