@@ -12,14 +12,9 @@
   <!-- LEFT SIDE: the menu -->
   <main class="menu-side">
 
-    <!-- Top bar: shop name, cashier name, Sales and Logout links -->
     <header class="top">
       <div class="brand">{% include 'cup.svg' %}<span>You Mocha Me Crazy</span></div>
-      <div class="user">
-        {{ username }} &middot;
-        <a href="/sales">Sales</a> &middot;
-        <a href="/logout">Logout</a>
-      </div>
+      {% include 'nav.html' %}
     </header>
 
     <!-- Category tabs: Coffee, Non Coffee, Pastry -->
@@ -29,15 +24,20 @@
       {% endfor %}
     </nav>
 
-    <!-- One card for every product -->
+    <!-- One card for every product. Sold out items cannot be tapped. -->
     <section class="grid">
       {% for product in products %}
-        <button class="item"
+        <button class="item {% if not product.is_available %}sold-out{% endif %}"
                 data-id="{{ product.product_id }}"
                 data-name="{{ product.name }}"
                 data-price="{{ product.price }}"
-                data-category="{{ product.category }}">
-          <span class="item-img" style="background: {{ product.color }}">{% include 'cup.svg' %}</span>
+                data-category="{{ product.category }}"
+                data-drink="{{ 1 if product.is_drink else 0 }}"
+                {% if not product.is_available %}disabled{% endif %}>
+          <span class="item-img" style="background: {{ product.color }}">
+            {% include 'cup.svg' %}
+            {% if not product.is_available %}<span class="badge">Sold out</span>{% endif %}
+          </span>
           <span class="item-name">{{ product.name }}</span>
           <span class="item-price">PHP {{ '{:,.0f}'.format(product.price) }}</span>
         </button>
@@ -47,7 +47,7 @@
     <p class="hint">Tap an item to add it to the order</p>
   </main>
 
-  <!-- RIGHT SIDE: the current order -->
+  <!-- RIGHT SIDE: the current order and payment -->
   <aside class="order-side">
     <div class="order-head">
       <h2>Order</h2>
@@ -58,14 +58,82 @@
     <div id="orderList" class="order-list"></div>
     <p id="emptyMessage" class="empty">No items yet</p>
 
-    <div class="total-row">
-      <span>Total</span>
-      <strong id="total">PHP 0</strong>
+    <div class="checkout">
+      <!-- Customer name and order type -->
+      <div class="row-2">
+        <input id="customerName" type="text" placeholder="Customer name">
+        <div class="toggle" id="orderType">
+          {% for order_type in order_types %}
+            <button class="toggle-btn {% if loop.first %}active{% endif %}" data-value="{{ order_type }}">{{ order_type }}</button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Senior Citizen or PWD discount -->
+      <div class="row-2">
+        <select id="discountType">
+          {% for discount_type in discount_types %}
+            <option value="{{ discount_type }}">{{ 'No discount' if discount_type == 'None' else discount_type }}</option>
+          {% endfor %}
+        </select>
+        <input id="discountId" type="text" placeholder="Senior or PWD ID no." disabled>
+      </div>
+
+      <!-- Payment method -->
+      <div class="toggle pay-methods" id="paymentMethod">
+        {% for method in payment_methods %}
+          <button class="toggle-btn {% if loop.first %}active{% endif %}" data-value="{{ method }}">{{ method }}</button>
+        {% endfor %}
+      </div>
+
+      <!-- Totals -->
+      <div class="totals">
+        <div><span>Subtotal</span><span id="subtotal">PHP 0.00</span></div>
+        <div><span id="vatLabel">VAT (12%, included)</span><span id="vat">PHP 0.00</span></div>
+        <div><span>Discount</span><span id="discount">PHP 0.00</span></div>
+        <div class="grand"><span>Total</span><strong id="total">PHP 0.00</strong></div>
+      </div>
+
+      <!-- Cash received and change (only for cash) -->
+      <div class="row-2" id="cashRow">
+        <input id="cashReceived" type="number" min="0" step="1" placeholder="Cash received">
+        <div class="change">Change <strong id="change">PHP 0.00</strong></div>
+      </div>
     </div>
+
     <button id="payButton" class="btn-pay" disabled>Pay</button>
   </aside>
 
-  <!-- Small message box that pops up after paying -->
+  <!-- Pop-up for choosing drink options -->
+  <div id="optionsBox" class="modal">
+    <div class="modal-card">
+      <h3 id="optionsTitle">Drink</h3>
+      <p class="muted" id="optionsPrice"></p>
+
+      {% for group in ['Size', 'Temperature', 'Add-on'] %}
+        <div class="option-group">
+          <h4>{{ 'Add-ons' if group == 'Add-on' else group }}</h4>
+          <div class="option-list">
+            {% for option in options if option.group_name == group %}
+              <label class="option">
+                <input type="{{ 'checkbox' if group == 'Add-on' else 'radio' }}"
+                       name="{{ group }}" value="{{ option.option_id }}"
+                       data-name="{{ option.name }}" data-extra="{{ option.extra_price }}">
+                <span>{{ option.name }}{% if option.extra_price > 0 %} +{{ '{:,.0f}'.format(option.extra_price) }}{% endif %}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+
+      <div class="modal-actions">
+        <button id="cancelOptions" class="btn-light">Cancel</button>
+        <button id="addWithOptions" class="btn-primary">Add to Order</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Small message box for errors -->
   <div id="message" class="toast"></div>
 
   <script src="/static/app.js"></script>

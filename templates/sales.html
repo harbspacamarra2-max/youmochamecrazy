@@ -1,48 +1,60 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sales | You Mocha Me Crazy</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/static/style.css">
-</head>
-<body class="sales-page">
+{% extends 'base.html' %}
+{% block title %}Sales{% endblock %}
+{% block body_class %}page sales-page{% endblock %}
+{% block content %}
 
-  <header class="top">
-    <div class="brand">{% include 'cup.svg' %}<span>You Mocha Me Crazy</span></div>
-    <div class="user"><a href="/order">Back to Order</a> &middot; <a href="/logout">Logout</a></div>
-  </header>
+<h1>Sales Records</h1>
 
-  <h1>Sales Records</h1>
+<!-- Today's summary -->
+<div class="stats">
+  <div class="stat"><span>Orders today</span><strong>{{ order_count }}</strong></div>
+  <div class="stat"><span>Sales today</span><strong>PHP {{ '{:,.2f}'.format(total_sales) }}</strong></div>
+  <div class="stat"><span>Discounts given today</span><strong>PHP {{ '{:,.2f}'.format(total_discounts) }}</strong></div>
+</div>
 
-  <!-- Today's summary -->
-  <div class="stats">
-    <div class="stat"><span>Orders today</span><strong>{{ order_count }}</strong></div>
-    <div class="stat"><span>Sales today</span><strong>PHP {{ '{:,.0f}'.format(total_sales) }}</strong></div>
+<div class="two-cards">
+  <!-- Best sellers today -->
+  <div class="card">
+    <h3>Best sellers today</h3>
+    {% if best_sellers|length == 0 %}<p class="muted">No sales yet.</p>{% endif %}
+    {% for item in best_sellers %}
+      <div class="line"><span>{{ item.name }}</span><strong>{{ item.sold }} sold</strong></div>
+    {% endfor %}
   </div>
 
-  <!-- Table of the latest orders -->
-  <table class="sales-table">
-    <thead>
-      <tr><th>Order</th><th>Date and Time</th><th>Cashier</th><th>Items</th><th>Total</th></tr>
-    </thead>
-    <tbody>
-      {% if orders|length == 0 %}
-        <tr><td colspan="5" class="muted">No orders yet.</td></tr>
-      {% endif %}
+  <!-- Sales per payment method today -->
+  <div class="card">
+    <h3>Payment methods today</h3>
+    {% if by_payment|length == 0 %}<p class="muted">No sales yet.</p>{% endif %}
+    {% for row in by_payment %}
+      <div class="line"><span>{{ row.payment_method }}</span><strong>PHP {{ '{:,.2f}'.format(row.amount) }}</strong></div>
+    {% endfor %}
+  </div>
+</div>
 
-      {% for order in orders %}
-        <tr>
-          <td>#{{ order.order_id }}</td>
-          <td>{{ order.order_date }}</td>
-          <td>{{ order.username }}</td>
-          <td>{{ order.item_names }}</td>
-          <td>PHP {{ '{:,.0f}'.format(order.total) }}</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<!-- Table of the latest orders -->
+<table class="sales-table">
+  <thead>
+    <tr><th>Order</th><th>Date and Time</th><th>Cashier</th><th>Customer</th><th>Type</th><th>Discount</th><th>Payment</th><th>Total</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% if orders|length == 0 %}
+      <tr><td colspan="9" class="muted">No orders yet.</td></tr>
+    {% endif %}
+    {% for order in orders %}
+      <tr>
+        <td>#{{ order.order_id }}</td>
+        <td>{{ order.order_date }}</td>
+        <td>{{ order.cashier }}</td>
+        <td>{{ order.customer_name }}</td>
+        <td>{{ order.order_type }}</td>
+        <td>{{ '-' if order.discount_type == 'None' else order.discount_type }}</td>
+        <td>{{ order.payment_method }}</td>
+        <td>PHP {{ '{:,.2f}'.format(order.total) }}</td>
+        <td><a href="/receipt/{{ order.order_id }}">Receipt</a></td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
 
-</body>
-</html>
+{% endblock %}

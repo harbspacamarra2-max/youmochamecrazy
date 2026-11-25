@@ -1,0 +1,10 @@
+<!-- Links at the top. Sales and Menu are only shown to the owner. -->
+<nav class="user">
+  <span class="who">{{ session['full_name'] }} ({{ session['role'] }})</span>
+  <a href="/order">Order</a>
+  {% if session['role'] == 'Owner' %}
+    <a href="/sales">Sales</a>
+    <a href="/menu">Menu</a>
+  {% endif %}
+  <a href="/logout">Logout</a>
+</nav>

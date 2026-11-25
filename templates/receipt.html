@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Receipt #{{ order.order_id }}{% endblock %}
+{% block body_class %}page receipt-page{% endblock %}
+{% block content %}
+
+<div class="receipt">
+  <div class="receipt-head">
+    <div class="logo-circle small">{% include 'cup.svg' %}</div>
+    <h2>You Mocha Me Crazy</h2>
+    <p class="muted">Official Receipt</p>
+  </div>
+
+  <div class="receipt-info">
+    <div><span>Order No.</span><span>#{{ order.order_id }}</span></div>
+    <div><span>Date</span><span>{{ date }}</span></div>
+    <div><span>Cashier</span><span>{{ order.cashier }}</span></div>
+    <div><span>Customer</span><span>{{ order.customer_name }}</span></div>
+    <div><span>Order Type</span><span>{{ order.order_type }}</span></div>
+  </div>
+
+  <div class="receipt-items">
+    {% for item in items %}
+      <div class="r-item">
+        <div>
+          <strong>{{ item.quantity }}x {{ item.name }}</strong>
+          {% if item.options %}<div class="muted small-text">{{ item.options }}</div>{% endif %}
+        </div>
+        <span>{{ '{:,.2f}'.format(item.subtotal) }}</span>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="receipt-info">
+    <div><span>Subtotal</span><span>{{ '{:,.2f}'.format(order.subtotal) }}</span></div>
+    {% if order.discount_type == 'None' %}
+      <div><span>VAT (12%, included)</span><span>{{ '{:,.2f}'.format(order.vat) }}</span></div>
+    {% else %}
+      <div><span>Less VAT (12%)</span><span>-{{ '{:,.2f}'.format(order.subtotal - order.subtotal / 1.12) }}</span></div>
+      <div><span>{{ order.discount_type }} Discount (20%)</span><span>-{{ '{:,.2f}'.format(order.discount) }}</span></div>
+      <div><span>{{ order.discount_type }} ID</span><span>{{ order.discount_id_no }}</span></div>
+    {% endif %}
+    <div class="grand"><span>TOTAL</span><span>PHP {{ '{:,.2f}'.format(order.total) }}</span></div>
+    <div><span>Paid via {{ order.payment_method }}</span><span>{{ '{:,.2f}'.format(order.amount_paid) }}</span></div>
+    <div><span>Change</span><span>{{ '{:,.2f}'.format(order.change_due) }}</span></div>
+  </div>
+
+  <p class="thanks">Thank you, come again!</p>
+</div>
+
+<div class="receipt-actions no-print">
+  <button class="btn-light" onclick="window.print()">Print Receipt</button>
+  <a class="btn-primary" href="/order">New Order</a>
+</div>
+
+{% endblock %}

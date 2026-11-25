@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Menu{% endblock %}
+{% block body_class %}page menu-page{% endblock %}
+{% block content %}
+
+<h1>Menu Management</h1>
+
+{% if message %}<div class="notice">{{ message }}</div>{% endif %}
+
+<!-- Form for adding a new menu item -->
+<form class="card add-form" method="post" action="/menu/add">
+  <h3>Add a new item</h3>
+  <div class="form-row">
+    <input name="name" type="text" placeholder="Item name" required>
+    <select name="category">
+      {% for category in categories %}<option>{{ category }}</option>{% endfor %}
+    </select>
+    <input name="price" type="number" min="1" step="1" placeholder="Price" required>
+    <button type="submit" class="btn-primary">Add Item</button>
+  </div>
+</form>
+
+<!-- One row for every menu item. Change the details, then press Save. -->
+<div class="card menu-list">
+  <div class="menu-row header">
+    <span>Item</span><span>Category</span><span>Price (PHP)</span><span>Status</span><span></span>
+  </div>
+  {% for product in products %}
+    <form class="menu-row" method="post" action="/menu/update/{{ product.product_id }}">
+      <input name="name" type="text" value="{{ product.name }}" required>
+      <select name="category">
+        {% for category in categories %}
+          <option {% if category == product.category %}selected{% endif %}>{{ category }}</option>
+        {% endfor %}
+      </select>
+      <input name="price" type="number" min="1" step="1" value="{{ '%.0f'|format(product.price) }}" required>
+      <label class="check"><input type="checkbox" name="is_available" {% if product.is_available %}checked{% endif %}>
+        {{ 'Available' if product.is_available else 'Sold out' }}</label>
+      <button type="submit" class="btn-light">Save</button>
+    </form>
+  {% endfor %}
+</div>
+
+{% endblock %}
