@@ -1,8 +1,8 @@
 YOU MOCHA ME CRAZY COFFEE ORDERING SYSTEM (Python + Flask)
 
 Accounts
-  cashier / mocha123
-  owner   / crazy123
+  owner   / crazy123   (Order, Sales, Menu)
+  cashier / mocha123   (Order only)
 
 Run on your own computer
   1. Install Python, then run:  pip install flask
@@ -15,9 +15,11 @@ Put it online (Render)
   Start command:  gunicorn app:app
 
 Files
-  app.py               the whole system (login, order screen, pay, sales, logout)
+  app.py               the whole system (login, ordering, payment, receipt,
+                       sales, menu management, logout)
   requirements.txt     Python packages the system needs
   config.py            settings (database file name)
   database.sql         tables and sample data
-  templates/           login.html, order.html, sales.html, cup.svg
+  templates/           base.html, nav.html, login.html, order.html,
+                       receipt.html, sales.html, menu.html, cup.svg
   static/              style.css, app.js

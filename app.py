@@ -1,6 +1,7 @@
 # app.py
 # The main file of the You Mocha Me Crazy Coffee Ordering System.
-# It runs the website: the login page, the order screen, paying, and the sales records.
+# It runs the website: login, the order screen, payment, receipts,
+# sales records, and menu management.
 
 import os
 import sqlite3
@@ -24,6 +25,14 @@ PH_TIME = timezone(timedelta(hours=8))
 # The three menu categories, shown as tabs
 CATEGORIES = ['Coffee', 'Non Coffee', 'Pastry']
 
+# Categories that have drink options (size, hot or iced, add-ons)
+DRINK_CATEGORIES = ['Coffee', 'Non Coffee']
+
+# Choices on the order screen
+ORDER_TYPES = ['Dine-in', 'Take-out']
+DISCOUNT_TYPES = ['None', 'Senior Citizen', 'PWD']
+PAYMENT_METHODS = ['Cash', 'GCash', 'Maya', 'Card']
+
 # Brown shades used as the background of each item picture
 COLORS = ['#6B4430', '#AE7A50', '#9C6A45', '#C99B6C', '#5A3524', '#C8874B']
 
@@ -37,7 +46,7 @@ def connect():
 
 # ----- CREATE THE DATABASE THE FIRST TIME -----
 # If the database file does not exist yet, create the tables and add the
-# cashier accounts and menu items from database.sql
+# accounts, menu items, and drink options from database.sql
 def create_database():
     if not os.path.exists(DB_PATH):
         db = connect()
@@ -50,15 +59,38 @@ def create_database():
 create_database()
 
 
-# ----- CHECK IF SOMEONE IS LOGGED IN -----
+# ----- CHECK WHO IS LOGGED IN -----
 def is_logged_in():
     return 'user_id' in session
+
+
+def is_owner():
+    return session.get('role') == 'Owner'
+
+
+# ----- COMPUTE THE TOTAL OF AN ORDER -----
+# Menu prices already include 12% VAT.
+# Senior Citizens and PWDs get 20% off and do not pay VAT:
+#   1. Remove the VAT:      price without VAT = subtotal / 1.12
+#   2. Take 20% off that:   discount = price without VAT x 0.20
+#   3. Total to pay:        price without VAT - discount
+def compute_totals(subtotal, discount_type):
+    if discount_type == 'None':
+        vat = subtotal - subtotal / 1.12      # the VAT already inside the price
+        discount = 0
+        total = subtotal
+    else:
+        price_without_vat = subtotal / 1.12
+        vat = 0                               # VAT exempt
+        discount = price_without_vat * 0.20
+        total = price_without_vat - discount
+    return round(vat, 2), round(discount, 2), round(total, 2)
 
 
 # ----- LOGIN PAGE -----
 @app.route('/', methods=['GET', 'POST'])
 def login():
-    # If the cashier is already logged in, go straight to the order screen
+    # If someone is already logged in, go straight to the order screen
     if is_logged_in():
         return redirect('/order')
 
@@ -67,7 +99,7 @@ def login():
 
     # This part runs only when the Sign In button is pressed
     if request.method == 'POST':
-        # Step 1: Get what the cashier typed
+        # Step 1: Get what the user typed
         username = request.form['username'].strip()
         password = request.form['password']
 
@@ -78,9 +110,11 @@ def login():
 
         # Step 3: Check if the user exists and the password is correct
         if user and check_password_hash(user['password'], password):
-            # Correct: remember the user and open the order screen
+            # Correct: remember the user and their role, then open the order screen
             session['user_id'] = user['user_id']
             session['username'] = user['username']
+            session['full_name'] = user['full_name']
+            session['role'] = user['role']
             return redirect('/order')
         else:
             # Wrong: show a message and let them try again
@@ -92,13 +126,13 @@ def login():
 # ----- ORDER SCREEN -----
 @app.route('/order')
 def order():
-    # Only logged in cashiers can open this page
+    # Only logged in users can open this page
     if not is_logged_in():
         return redirect('/')
 
-    # Get all the products from the database
     db = connect()
     rows = db.execute('SELECT * FROM products ORDER BY product_id').fetchall()
+    options = [dict(row) for row in db.execute('SELECT * FROM options ORDER BY option_id').fetchall()]
     db.close()
 
     # Give each product a brown shade for its picture
@@ -107,65 +141,117 @@ def order():
     for row in rows:
         product = dict(row)
         product['color'] = COLORS[number % len(COLORS)]
+        product['is_drink'] = product['category'] in DRINK_CATEGORIES
         products.append(product)
         number = number + 1
 
-    return render_template('order.html', products=products, categories=CATEGORIES,
-                           username=session['username'])
+    return render_template('order.html', products=products, options=options,
+                           categories=CATEGORIES, order_types=ORDER_TYPES,
+                           discount_types=DISCOUNT_TYPES, payment_methods=PAYMENT_METHODS)
 
 
 # ----- PAY (SAVE THE ORDER) -----
-# The order screen sends the list of items here when Pay is pressed.
+# The order screen sends the whole order here when Pay is pressed.
 @app.route('/pay', methods=['POST'])
 def pay():
-    # Stop if the cashier is not logged in
+    # Stop if no one is logged in
     if not is_logged_in():
         return jsonify(ok=False, message='Please sign in again.')
 
-    # Step 1: Read the items sent by the order screen
-    # Example: [ {"product_id": 2, "quantity": 2}, {"product_id": 4, "quantity": 1} ]
+    # Step 1: Read the order sent by the order screen
     data = request.get_json()
     items = data.get('items', [])
+    customer_name = data.get('customer_name', '').strip() or 'Walk-in'
+    order_type = data.get('order_type', '')
+    discount_type = data.get('discount_type', 'None')
+    discount_id_no = data.get('discount_id_no', '').strip()
+    payment_method = data.get('payment_method', '')
 
+    # Step 2: Check the choices
     if len(items) == 0:
         return jsonify(ok=False, message='The order is empty.')
+    if order_type not in ORDER_TYPES:
+        return jsonify(ok=False, message='Please choose Dine-in or Take-out.')
+    if discount_type not in DISCOUNT_TYPES:
+        return jsonify(ok=False, message='Please choose a discount.')
+    if discount_type != 'None' and discount_id_no == '':
+        return jsonify(ok=False, message='Please enter the Senior Citizen or PWD ID number.')
+    if payment_method not in PAYMENT_METHODS:
+        return jsonify(ok=False, message='Please choose a payment method.')
 
     db = connect()
     try:
-        # Step 2: Get the real price of each item from the database
-        # and compute the subtotal and the total.
-        # We do not trust the price from the screen, we always use the database price.
-        total = 0
+        # Step 3: Compute the price of each item using the prices in the database.
+        # We do not trust the prices from the screen.
+        subtotal = 0
         order_items = []
 
         for item in items:
             product_id = int(item['product_id'])
             quantity = int(item['quantity'])
+            option_ids = item.get('option_ids', [])
 
-            product = db.execute('SELECT price FROM products WHERE product_id = ?', (product_id,)).fetchone()
+            product = db.execute('SELECT * FROM products WHERE product_id = ?', (product_id,)).fetchone()
 
-            # Skip items that do not exist or have a wrong quantity
-            if product is None or quantity < 1:
+            # Skip items that do not exist, are sold out, or have a wrong quantity
+            if product is None or product['is_available'] == 0 or quantity < 1:
                 continue
 
-            subtotal = product['price'] * quantity
-            total = total + subtotal
-            order_items.append({'product_id': product_id, 'quantity': quantity, 'subtotal': subtotal})
+            # Add the price of each chosen option (only drinks have options)
+            unit_price = product['price']
+            option_names = []
+            if product['category'] in DRINK_CATEGORIES:
+                for option_id in option_ids:
+                    option = db.execute('SELECT * FROM options WHERE option_id = ?', (int(option_id),)).fetchone()
+                    if option is not None:
+                        unit_price = unit_price + option['extra_price']
+                        option_names.append(option['name'])
+
+            item_subtotal = unit_price * quantity
+            subtotal = subtotal + item_subtotal
+            order_items.append({
+                'product_id': product_id,
+                'options': ', '.join(option_names),
+                'unit_price': unit_price,
+                'quantity': quantity,
+                'subtotal': item_subtotal,
+            })
 
         # Stop if none of the items were valid
         if len(order_items) == 0:
             return jsonify(ok=False, message='The order is empty.')
 
-        # Step 3: Save the order (who took it, the date and time, and the total)
+        # Step 4: Compute the VAT, the discount, and the total
+        vat, discount, total = compute_totals(subtotal, discount_type)
+
+        # Step 5: Check the payment. For cash, the money received must cover the total.
+        if payment_method == 'Cash':
+            amount_paid = float(data.get('amount_paid') or 0)
+            if amount_paid < total:
+                return jsonify(ok=False, message='The cash received is less than the total.')
+        else:
+            amount_paid = total
+        change_due = round(amount_paid - total, 2)
+
+        # Step 6: Save the order
         now = datetime.now(PH_TIME).strftime('%Y-%m-%d %H:%M:%S')
-        cursor = db.execute('INSERT INTO orders (user_id, order_date, total) VALUES (?, ?, ?)',
-                            (session['user_id'], now, total))
+        cursor = db.execute('''
+            INSERT INTO orders (user_id, order_date, customer_name, order_type, subtotal, vat,
+                                discount_type, discount_id_no, discount, total,
+                                payment_method, amount_paid, change_due)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (session['user_id'], now, customer_name, order_type, subtotal, vat,
+              discount_type, discount_id_no, discount, total,
+              payment_method, amount_paid, change_due))
         order_id = cursor.lastrowid   # the new order number
 
-        # Step 4: Save each item of the order
+        # Step 7: Save each item of the order
         for order_item in order_items:
-            db.execute('INSERT INTO order_items (order_id, product_id, quantity, subtotal) VALUES (?, ?, ?, ?)',
-                       (order_id, order_item['product_id'], order_item['quantity'], order_item['subtotal']))
+            db.execute('''
+                INSERT INTO order_items (order_id, product_id, options, unit_price, quantity, subtotal)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (order_id, order_item['product_id'], order_item['options'],
+                  order_item['unit_price'], order_item['quantity'], order_item['subtotal']))
 
         # Save everything together. If something failed above, nothing is saved.
         db.commit()
@@ -175,27 +261,79 @@ def pay():
     finally:
         db.close()
 
-    # Step 5: Tell the order screen it worked, with the order number and total
-    return jsonify(ok=True, order_id=order_id, total=total)
+    # Step 8: Tell the order screen it worked, so it can open the receipt
+    return jsonify(ok=True, order_id=order_id)
 
 
-# ----- SALES RECORDS -----
+# ----- RECEIPT -----
+@app.route('/receipt/<int:order_id>')
+def receipt(order_id):
+    if not is_logged_in():
+        return redirect('/')
+
+    db = connect()
+    the_order = db.execute('''
+        SELECT orders.*, users.full_name AS cashier
+        FROM orders
+        JOIN users ON users.user_id = orders.user_id
+        WHERE orders.order_id = ?
+    ''', (order_id,)).fetchone()
+    items = db.execute('''
+        SELECT order_items.*, products.name
+        FROM order_items
+        JOIN products ON products.product_id = order_items.product_id
+        WHERE order_items.order_id = ?
+    ''', (order_id,)).fetchall()
+    db.close()
+
+    if the_order is None:
+        return redirect('/order')
+
+    date = datetime.strptime(the_order['order_date'], '%Y-%m-%d %H:%M:%S')
+    return render_template('receipt.html', order=the_order, items=items,
+                           date=date.strftime('%b %d, %Y %I:%M %p'))
+
+
+# ----- SALES RECORDS (OWNER ONLY) -----
 @app.route('/sales')
 def sales():
     if not is_logged_in():
         return redirect('/')
+    if not is_owner():
+        return redirect('/order')
 
     today = datetime.now(PH_TIME).strftime('%Y-%m-%d')
 
     db = connect()
 
-    # Count today's orders and add up today's sales
-    summary = db.execute('SELECT COUNT(*) AS order_count, SUM(total) AS sales FROM orders WHERE DATE(order_date) = ?',
-                         (today,)).fetchone()
+    # Count today's orders and add up today's sales and discounts
+    summary = db.execute('''
+        SELECT COUNT(*) AS order_count, SUM(total) AS sales, SUM(discount) AS discounts
+        FROM orders WHERE DATE(order_date) = ?
+    ''', (today,)).fetchone()
 
-    # Get the 50 latest orders together with the name of the cashier who took them
+    # The 5 best selling items today
+    best_sellers = db.execute('''
+        SELECT products.name, SUM(order_items.quantity) AS sold
+        FROM order_items
+        JOIN orders ON orders.order_id = order_items.order_id
+        JOIN products ON products.product_id = order_items.product_id
+        WHERE DATE(orders.order_date) = ?
+        GROUP BY products.name
+        ORDER BY sold DESC
+        LIMIT 5
+    ''', (today,)).fetchall()
+
+    # Today's sales for each payment method
+    by_payment = db.execute('''
+        SELECT payment_method, SUM(total) AS amount
+        FROM orders WHERE DATE(order_date) = ?
+        GROUP BY payment_method
+    ''', (today,)).fetchall()
+
+    # The 50 latest orders
     rows = db.execute('''
-        SELECT orders.order_id, orders.order_date, orders.total, users.username
+        SELECT orders.*, users.full_name AS cashier
         FROM orders
         JOIN users ON users.user_id = orders.user_id
         ORDER BY orders.order_id DESC
@@ -205,31 +343,75 @@ def sales():
     orders = []
     for row in rows:
         each_order = dict(row)
-
-        # Show the date like "Nov 25, 2026 06:09 PM"
         date = datetime.strptime(each_order['order_date'], '%Y-%m-%d %H:%M:%S')
         each_order['order_date'] = date.strftime('%b %d, %Y %I:%M %p')
-
-        # Get the items inside the order, for example "2x Cafe Latte, 1x Mocha"
-        items = db.execute('''
-            SELECT order_items.quantity, products.name
-            FROM order_items
-            JOIN products ON products.product_id = order_items.product_id
-            WHERE order_items.order_id = ?
-        ''', (each_order['order_id'],)).fetchall()
-        item_list = []
-        for item in items:
-            item_list.append(str(item['quantity']) + 'x ' + item['name'])
-        each_order['item_names'] = ', '.join(item_list)
-
         orders.append(each_order)
 
     db.close()
 
-    order_count = summary['order_count']
-    total_sales = summary['sales'] or 0
+    return render_template('sales.html', orders=orders,
+                           order_count=summary['order_count'],
+                           total_sales=summary['sales'] or 0,
+                           total_discounts=summary['discounts'] or 0,
+                           best_sellers=best_sellers, by_payment=by_payment)
 
-    return render_template('sales.html', orders=orders, order_count=order_count, total_sales=total_sales)
+
+# ----- MENU MANAGEMENT (OWNER ONLY) -----
+@app.route('/menu')
+def menu():
+    if not is_logged_in():
+        return redirect('/')
+    if not is_owner():
+        return redirect('/order')
+
+    db = connect()
+    products = db.execute('SELECT * FROM products ORDER BY category, name').fetchall()
+    db.close()
+
+    message = request.args.get('message', '')
+    return render_template('menu.html', products=products, categories=CATEGORIES, message=message)
+
+
+# Add a new menu item
+@app.route('/menu/add', methods=['POST'])
+def menu_add():
+    if not is_owner():
+        return redirect('/order')
+
+    name = request.form['name'].strip()
+    category = request.form['category']
+    price = float(request.form['price'] or 0)
+
+    if name != '' and category in CATEGORIES and price > 0:
+        db = connect()
+        db.execute('INSERT INTO products (name, category, price) VALUES (?, ?, ?)', (name, category, price))
+        db.commit()
+        db.close()
+        return redirect('/menu?message=' + name + ' was added to the menu.')
+
+    return redirect('/menu?message=Please fill in a name, a category, and a price above 0.')
+
+
+# Save changes to a menu item (name, category, price, available or sold out)
+@app.route('/menu/update/<int:product_id>', methods=['POST'])
+def menu_update(product_id):
+    if not is_owner():
+        return redirect('/order')
+
+    name = request.form['name'].strip()
+    category = request.form['category']
+    price = float(request.form['price'] or 0)
+    is_available = 1 if request.form.get('is_available') else 0
+
+    if name != '' and category in CATEGORIES and price > 0:
+        db = connect()
+        db.execute('UPDATE products SET name = ?, category = ?, price = ?, is_available = ? WHERE product_id = ?',
+                   (name, category, price, is_available, product_id))
+        db.commit()
+        db.close()
+        return redirect('/menu?message=' + name + ' was updated.')
+
+    return redirect('/menu?message=Please fill in a name, a category, and a price above 0.')
 
 
 # ----- LOGOUT -----

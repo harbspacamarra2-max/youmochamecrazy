@@ -1,27 +1,48 @@
 -- You Mocha Me Crazy Coffee Ordering System
 -- Database: coffee_shop (SQLite)
 
--- Table of cashier accounts
+-- Table of user accounts (owner and cashiers)
 CREATE TABLE users (
-  user_id  INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT NOT NULL UNIQUE,
-  password TEXT NOT NULL
+  user_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  username  TEXT NOT NULL UNIQUE,
+  password  TEXT NOT NULL,
+  full_name TEXT NOT NULL,
+  role      TEXT NOT NULL CHECK (role IN ('Owner', 'Cashier'))
 );
 
 -- Table of menu items
 CREATE TABLE products (
-  product_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name       TEXT NOT NULL,
-  category   TEXT NOT NULL CHECK (category IN ('Coffee', 'Non Coffee', 'Pastry')),
-  price      REAL NOT NULL
+  product_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  name         TEXT NOT NULL,
+  category     TEXT NOT NULL CHECK (category IN ('Coffee', 'Non Coffee', 'Pastry')),
+  price        REAL NOT NULL,
+  is_available INTEGER NOT NULL DEFAULT 1
+);
+
+-- Table of drink options: sizes, hot or iced, and add-ons
+CREATE TABLE options (
+  option_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_name  TEXT NOT NULL CHECK (group_name IN ('Size', 'Temperature', 'Add-on')),
+  name        TEXT NOT NULL,
+  extra_price REAL NOT NULL DEFAULT 0
 );
 
 -- Table of finished orders
 CREATE TABLE orders (
-  order_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id    INTEGER NOT NULL,
-  order_date TEXT NOT NULL,
-  total      REAL NOT NULL,
+  order_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id        INTEGER NOT NULL,
+  order_date     TEXT NOT NULL,
+  customer_name  TEXT NOT NULL,
+  order_type     TEXT NOT NULL CHECK (order_type IN ('Dine-in', 'Take-out')),
+  subtotal       REAL NOT NULL,
+  vat            REAL NOT NULL,
+  discount_type  TEXT NOT NULL CHECK (discount_type IN ('None', 'Senior Citizen', 'PWD')),
+  discount_id_no TEXT NOT NULL DEFAULT '',
+  discount       REAL NOT NULL,
+  total          REAL NOT NULL,
+  payment_method TEXT NOT NULL CHECK (payment_method IN ('Cash', 'GCash', 'Maya', 'Card')),
+  amount_paid    REAL NOT NULL,
+  change_due     REAL NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
@@ -30,16 +51,18 @@ CREATE TABLE order_items (
   item_id    INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id   INTEGER NOT NULL,
   product_id INTEGER NOT NULL,
+  options    TEXT NOT NULL DEFAULT '',
+  unit_price REAL NOT NULL,
   quantity   INTEGER NOT NULL,
   subtotal   REAL NOT NULL,
   FOREIGN KEY (order_id) REFERENCES orders(order_id),
   FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 
--- Cashier accounts (the passwords are saved as hashes)
-INSERT INTO users (username, password) VALUES
-('cashier', 'pbkdf2:sha256:1000000$IxCc6dfXedcrnhMI$53bf3bdd5804457c9edffcc9baa51c9dc0793a4191003145484a50ce2ec06bc9'),
-('owner',   'pbkdf2:sha256:1000000$3Hpy4wdG535LGdAm$b7c5582967d15b51c911f9fa93fcb7a4a21e0f6809930464bc0f01c9e47cfe86');
+-- User accounts (the passwords are saved as hashes)
+INSERT INTO users (username, password, full_name, role) VALUES
+('owner',   'pbkdf2:sha256:1000000$3Hpy4wdG535LGdAm$b7c5582967d15b51c911f9fa93fcb7a4a21e0f6809930464bc0f01c9e47cfe86', 'Shop Owner', 'Owner'),
+('cashier', 'pbkdf2:sha256:1000000$IxCc6dfXedcrnhMI$53bf3bdd5804457c9edffcc9baa51c9dc0793a4191003145484a50ce2ec06bc9', 'Main Cashier', 'Cashier');
 
 -- Menu items
 INSERT INTO products (name, category, price) VALUES
@@ -55,3 +78,16 @@ INSERT INTO products (name, category, price) VALUES
 ('Croissant',        'Pastry',      90),
 ('Blueberry Muffin', 'Pastry',      85),
 ('Ensaymada',        'Pastry',      70);
+
+-- Drink options
+INSERT INTO options (group_name, name, extra_price) VALUES
+('Size',        '12oz',          0),
+('Size',        '16oz',         20),
+('Size',        '22oz',         40),
+('Temperature', 'Hot',           0),
+('Temperature', 'Iced',          0),
+('Add-on',      'Extra Shot',   35),
+('Add-on',      'Oat Milk',     30),
+('Add-on',      'Vanilla Syrup',20),
+('Add-on',      'Caramel Syrup',20),
+('Add-on',      'Whipped Cream',15);
